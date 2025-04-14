@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Serpent Rush</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #0a0a0a, #1a052e);
+      font-family: 'Press Start 2P', cursive;
+      color: #dcd0ff;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .title {
+      font-size: 32px;
+      color: #ffffff;
+      text-shadow: 0 0 10px #ffffff, 0 0 20px #a78bfa, 0 0 30px #c084fc;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .score-board {
+      font-size: 10px;
+      margin-bottom: 10px;
+      padding: 5px 10px;
+      background: linear-gradient(90deg, #5c2b82, #7a42a8);
+      border-radius: 10px;
+      color: #fff;
+      box-shadow: 0 0 10px #a78bfa;
+      transition: background 0.5s;
+    }
+
+    canvas {
+      border: 2px solid #dcd0ff;
+      background: linear-gradient(135deg, #1e082e, #4b217b);
+      box-shadow: 0 0 20px #7c3aed;
+    }
+
+    .controls {
+      margin-top: 10px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 5px;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      transition: 0.3s;
+      color: white;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+    }
+
+    .start { background: linear-gradient(45deg, #5c2b82, #7a42a8); }
+    .pause { background: linear-gradient(45deg, #7a42a8, #a566c2); }
+    .restart { background: linear-gradient(45deg, #a566c2, #c084fc); }
+    button:hover { opacity: 0.85; }
+
+    #soundToggle {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      font-size: 24px;
+      cursor: pointer;
+      color: #fff;
+      z-index: 10;
+    }
+
+    .gameover-text {
+      position: absolute;
+      font-size: 32px;
+      color: #fff;
+      font-family: 'Press Start 2P', cursive;
+      text-align: center;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.5);
+      opacity: 0;
+      animation: popIn 1.5s ease-out forwards;
+      z-index: 9;
+      text-shadow: 0 0 10px #a78bfa, 0 0 20px #c084fc;
+    }
+
+    @keyframes popIn {
+      0% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 0;
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.2);
+        opacity: 0.7;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="title">Serpent Rush</div>
+  <div class="score-board" id="scoreBoard">Score: 0</div>
+  <canvas id="snakeGame" width="700" height="400"></canvas>
+  <div class="controls">
+    <button class="start" onclick="startGame()">Start</button>
+    <button class="pause" onclick="pauseGame()">Pause</button>
+    <button class="restart" onclick="restartGame()">Restart</button>
+  </div>
+  <div id="soundToggle" onclick="toggleSound()">🔊</div>
+
+  <!-- Audio -->
+  <audio id="eatSound" src="makann.mp3" preload="auto"></audio>
+  <audio id="openingSound" src="opening.mp3" preload="auto"></audio>
+  <audio id="bgmSound" src="bgm.mp3" preload="auto" loop></audio>
+  <audio id="gameOverSound" src="gameover.mp3" preload="auto"></audio>
+
+  <script>
+    const canvas = document.getElementById('snakeGame');
+    const ctx = canvas.getContext('2d');
+    const box = 20;
+
+    let snake = [{ x: 9 * box, y: 9 * box }];
+    let direction = 'RIGHT';
+    let food = {
+      x: Math.floor(Math.random() * 20) * box,
+      y: Math.floor(Math.random() * 20) * box
+    };
+    let score = 0;
+    let speed = 200;
+    let game;
+    let gameRunning = false;
+    let gameOver = false;
+
+    let soundEnabled = true;
+    const eatSound = document.getElementById('eatSound');
+    const openingSound = document.getElementById('openingSound');
+    const bgmSound = document.getElementById('bgmSound');
+    const gameOverSound = document.getElementById('gameOverSound');
+
+    document.addEventListener('keydown', changeDirection);
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      document.getElementById('soundToggle').innerText = soundEnabled ? "🔊" : "🔇";
+
+      if (!soundEnabled) {
+        openingSound.pause();
+        bgmSound.pause();
+        gameOverSound.pause();
+      } else {
+        if (gameRunning && !gameOver) {
+          bgmSound.play();
+        }
+      }
+    }
+
+    function changeDirection(e) {
+      if (e.keyCode === 37 && direction !== 'RIGHT') direction = 'LEFT';
+      else if (e.keyCode === 38 && direction !== 'DOWN') direction = 'UP';
+      else if (e.keyCode === 39 && direction !== 'LEFT') direction = 'RIGHT';
+      else if (e.keyCode === 40 && direction !== 'UP') direction = 'DOWN';
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (gameOver) {
+        drawGameOver();
+        bgmSound.pause();
+        return;
+      }
+
+      for (let i = 0; i < snake.length; i++) {
+        ctx.fillStyle = i === 0 ? '#c084fc' : '#7e22ce';
+        ctx.fillRect(snake[i].x, snake[i].y, box, box);
+        ctx.strokeStyle = '#dcd0ff';
+        ctx.strokeRect(snake[i].x, snake[i].y, box, box);
+      }
+
+      ctx.fillStyle = '#a78bfa';
+      ctx.beginPath();
+      ctx.arc(food.x + box / 2, food.y + box / 2, box / 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      let snakeX = snake[0].x;
+      let snakeY = snake[0].y;
+
+      if (direction === 'LEFT') snakeX -= box;
+      if (direction === 'UP') snakeY -= box;
+      if (direction === 'RIGHT') snakeX += box;
+      if (direction === 'DOWN') snakeY += box;
+
+      // Teleport if out of bounds
+      if (snakeX < 0) snakeX = canvas.width - box;
+      else if (snakeX >= canvas.width) snakeX = 0;
+      if (snakeY < 0) snakeY = canvas.height - box;
+      else if (snakeY >= canvas.height) snakeY = 0;
+
+      if (snakeX === food.x && snakeY === food.y) {
+        score++;
+        if (soundEnabled) eatSound.play();
+        food = {
+          x: Math.floor(Math.random() * 20) * box,
+          y: Math.floor(Math.random() * 20) * box
+        };
+        if (score % 10 === 0 && speed > 50) {
+          speed -= 20;
+          clearInterval(game);
+          game = setInterval(draw, speed);
+          document.getElementById('scoreBoard').style.background = '#6b21a8';
+          setTimeout(() => {
+            document.getElementById('scoreBoard').style.background = 'linear-gradient(90deg, #5c2b82, #7a42a8)';
+          }, 500);
+        }
+      } else {
+        snake.pop();
+      }
+
+      const newHead = { x: snakeX, y: snakeY };
+
+      if (snake.some(segment => segment.x === newHead.x && segment.y === newHead.y)) {
+        gameOver = true;
+        if (soundEnabled) gameOverSound.play();
+        showGameOverText();
+        return;
+      }
+
+      snake.unshift(newHead);
+      document.getElementById('scoreBoard').innerText = 'Score: ' + score;
+    }
+
+    function drawGameOver() {
+      // Optional: can still draw background here
+    }
+
+    function showGameOverText() {
+      const existingText = document.querySelector('.gameover-text');
+      if (existingText) existingText.remove();
+
+      const gameOverText = document.createElement('div');
+      gameOverText.classList.add('gameover-text');
+      gameOverText.textContent = "GAME OVER";
+      document.body.appendChild(gameOverText);
+    }
+
+    function startGame() {
+      if (!gameRunning) {
+        if (soundEnabled) {
+          openingSound.currentTime = 0;
+          openingSound.play().then(() => {
+            setTimeout(() => {
+              openingSound.pause();
+              openingSound.currentTime = 0;
+              bgmSound.play();
+              gameRunning = true;
+              gameOver = false;
+              game = setInterval(draw, speed);
+            }, 3000);
+          }).catch(() => {
+            gameRunning = true;
+            gameOver = false;
+            game = setInterval(draw, speed);
+          });
+        } else {
+          gameRunning = true;
+          gameOver = false;
+          game = setInterval(draw, speed);
+        }
+      }
+    }
+
+    function pauseGame() {
+      clearInterval(game);
+      gameRunning = false;
+      bgmSound.pause();
+    }
+
+    function restartGame() {
+      clearInterval(game);
+      snake = [{ x: 9 * box, y: 9 * box }];
+      direction = 'RIGHT';
+      score = 0;
+      speed = 200;
+      gameRunning = false;
+      gameOver = false;
+      document.getElementById('scoreBoard').innerText = 'Score: 0';
+      bgmSound.pause();
+      bgmSound.currentTime = 0;
+      const existingText = document.querySelector('.gameover-text');
+      if (existingText) existingText.remove();
+      startGame();
+    }
+  </script>
+</body>
+</html>
